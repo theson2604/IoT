@@ -1,0 +1,6 @@
+.pio/
+__pycache__/
+.env
+*.exe
+*.o
+.vscode/
