@@ -1,3 +1,5 @@
+> Historical Modbus results: not part of current MVP. Current results: migration-validation.md.
+
 # Verification record
 
 Executed 2026-10-31 (Asia/Bangkok):
