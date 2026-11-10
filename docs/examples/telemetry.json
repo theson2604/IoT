@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "device_id": "node01",
+  "available": true,
+  "sequence_number": 42,
+  "sender_uptime_ms": 1000,
+  "voltage_mv": 12000,
+  "current_ma": 125,
+  "power_mw": 1500,
+  "energy_mwh": 2,
+  "sensor_status": 1
+}

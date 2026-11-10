@@ -1,11 +1,7 @@
-"""Phase 0 scaffold; no device writes, network connections, AI, cloud, or OTA."""
-import argparse
-
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--version', action='version', version='energy-gateway 0.1.0-scaffold')
-    parser.parse_args()
-    print('Gateway scaffold only: transport and telemetry implementation deferred.')
-
+"""Compatibility entrypoint. Prefer python -m gateway from repository root."""
 if __name__ == '__main__':
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from gateway.__main__ import main
     main()

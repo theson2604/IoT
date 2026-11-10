@@ -6,9 +6,10 @@ namespace energy {
 inline void telemetryJson(const Message &m, char *out, size_t size) {
   snprintf(
       out, size,
-      "{\"available\":true,\"voltage_mv\":%ld,\"current_ma\":%ld,\"power_mw\":%"
+      "{\"schema_version\":1,\"device_id\":\"node01\",\"sender_uptime_ms\":%lu,"
+      "\"available\":true,\"voltage_mv\":%ld,\"current_ma\":%ld,\"power_mw\":%"
       "ld,\"energy_mwh\":%llu,\"sensor_status\":%u,\"sequence_number\":%lu}",
-      (long)m.voltage, (long)m.current, (long)m.power,
+      (unsigned long)m.uptime, (long)m.voltage, (long)m.current, (long)m.power,
       (unsigned long long)m.energy, unsigned(m.status),
       (unsigned long)m.sequence);
 }

@@ -3,7 +3,7 @@
 Sensor/device 1 samples EnergySensor, integrates positive consumption, sends
 telemetry/error/heartbeat and handles diagnostic commands. Collector/device 2
 validates Sensor messages, publishes JSON, serves HTTP and runs one pending
-command transaction. PC Gateway, CoreIOT, AI and dashboard are outside this task.
+command transaction. PC Gateway is implemented in Phase 2 below; CoreIOT, AI and dashboard remain outside scope.
 
 Shared modules: lib/Energy/Protocol.h (codec/validation/ordering/interfaces) and
 Runtime.h (mock sensor, conversion, energy integration, command cache/retry and
@@ -80,3 +80,27 @@ Primary references:
 [ESP-IDF ESP-NOW](https://docs.espressif.com/projects/esp-idf/en/v4.4.7/esp32s3/api-reference/network/esp_now.html),
 [TI INA219](https://www.ti.com/lit/ds/symlink/ina219.pdf),
 [PubSubClient 2.8](https://github.com/knolleary/pubsubclient/tree/v2.8).
+
+## Phase 2 PC Gateway and simulator
+
+`simulator/Sensor + Link + Collector → Paho → Mosquitto → Paho queue → Gateway service → MongoDB → FastAPI`.
+API commands take the reverse path with a durable public-string-ID/numeric-wire-ID
+mapping. Only matched application ACKs mark success. MQTT publication and link send
+acceptance alone do not. The Simulator uses the shared byte layout, C++-generated
+fixtures, seeded randomness and explicit ticks. MemoryBroker is a unit-test fixture,
+not MQTT protocol implementation or RF simulation.
+
+Gateway layers: models (strict boundary/API schemas), mqtt (Paho adapter), services
+(routing/status/command correlation), storage (PyMongo collections/indexes), main (FastAPI lifespan,
+100ms maintenance loop and REST). A lock serializes local service/API operations; MongoDB unique indexes and conditional single-document updates protect command creation and terminal transitions.
+Paho callbacks enqueue bounded messages; maintenance runs outside their thread.
+Shutdown waits for maintenance completion before closing MongoDB. No database or
+network connections are created at import time. REST is loopback-only by default.
+
+Broker and device outages are independent. Gateway online requires its broker
+connection plus fresh device evidence; measurements can remain available offline.
+Telemetry sequences deduplicate modulo uint32 until a 20s idle reset for reboot
+recovery. This is a RAM/time watermark, not a durable boot-session identity.
+Schema/device/uptime metadata is now present in firmware MQTT telemetry; legacy
+payloads still work with unknown uptime. Wire bytes and physical configuration are
+unchanged. Full contract: mqtt-protocol.md; runbook: gateway-setup.md.

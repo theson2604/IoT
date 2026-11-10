@@ -1,0 +1,11 @@
+{
+  "wifi_connected": true,
+  "wifi_channel": 1,
+  "espnow_ready": true,
+  "mqtt_connected": true,
+  "sensor_seen": true,
+  "sensor_online": true,
+  "sensor_status": 1,
+  "age_ms": 0,
+  "command_pending": false
+}

@@ -220,6 +220,9 @@ void sensing() {
   m.power = r.power;
   m.energy = 2;
   assert(forwardTelemetry(broker, m) && broker.calls == 1);
+  assert(strstr(broker.payload, "\"schema_version\":1"));
+  assert(strstr(broker.payload, "\"device_id\":\"node01\""));
+  assert(strstr(broker.payload, "\"sender_uptime_ms\":0"));
   assert(!strcmp(broker.topic, "energy/node01/telemetry"));
   assert(strstr(broker.payload, "\"sensor_status\":1") &&
          strstr(broker.payload, "\"power_mw\":1500"));

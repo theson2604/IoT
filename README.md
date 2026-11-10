@@ -1,86 +1,94 @@
 # Smart Energy Monitoring and Anomaly Detection
 
-Firmware MVP: YoloUNO Sensor (INA219 or labelled mock) → ESP-NOW → YoloUNO
-Collector → Wi-Fi/local MQTT broker. Collector provides a read-only HTTP server.
-PC Gateway, broker deployment, AI, dashboard, CoreIOT and OTA are out of scope.
-Existing gateway/dashboard scaffolds remain unchanged.
+Phase 2 adds a Python two-node device simulator and PC Gateway:
 
-Both roles use the existing vendor `yolo_uno` board and Arduino configuration.
-Modbus/Waveshare is preserved in a legacy environment, **not part of current MVP**.
-No real load control or LED actuation is implemented.
+`Sensor → application-level ESP-NOW link → Collector → local MQTT → FastAPI/MongoDB`
 
-## Configuration
+The real YoloUNO firmware remains buildable. The simulator uses the same v1 binary
+layout and MQTT integer-unit contract. **Simulation does not verify ESP-NOW RF,
+INA219, physical Wi-Fi or device HTTP.** CoreIOT, AI, a full frontend, load switching
+and OTA remain out of scope.
 
-Copy `firmware/include/local_config.example.h` to `firmware/include/local_config.h`
-(Git ignored). Set actual opposite STA MACs from the boards' serial logs:
-COLLECTOR_MAC on Sensor, SENSOR_MAC on Collector. No MAC is prefilled.
-Set Wi-Fi credentials, MQTT host/port and optional MQTT user/password on Collector.
-Blank config builds but does not connect to a network or guessed peer.
-Set SENSOR_CHANNEL to the AP's actual 2.4GHz channel. Collector connects first
-and uses that AP channel; it never forces another channel while associated.
+## Quick start — Windows PowerShell
 
-USE_MOCK_SENSOR=1 is default: readings always have SIMULATED status 1.
-For real INA219, use 0, verify address straps and configure the actual
-INA219_SHUNT_MILLIOHMS. Zero shunt configuration reports SENSOR_ERROR.
-I2C uses vendor SDA/SCL symbols, not guessed pins.
-
-## Build and test
-
-PowerShell from repository root, with Python 3:
+Use Python 3.11+ from the repository root. For a fresh Windows 11 laptop, see
+the [Codex setup prompt](docs/windows11-codex-prompt.md).
 
 ```powershell
-python -m pip install platformio==6.2.0
-python -m platformio run -d firmware -e sensor_node
-python -m platformio run -d firmware -e collector_node
-python -m platformio pkg install --global --tool platformio/toolchain-gccmingw32
+python -m venv .venv
+./.venv/Scripts/python.exe -m pip install -r gateway/requirements-dev.txt
+Copy-Item gateway/.env.example gateway/.env
+```
+
+Install MongoDB Community on a supported Windows host and Mosquitto manually using [gateway setup](docs/gateway-setup.md). No installer,
+service or firewall changes are run by this repository. In terminal 1:
+
+```powershell
+& 'C:/Program Files/mosquitto/mosquitto.exe' -c ./scripts/mosquitto-local.conf -v
+```
+
+Terminal 2:
+
+```powershell
+./.venv/Scripts/python.exe -m gateway
+```
+
+Terminal 3:
+
+```powershell
+./.venv/Scripts/python.exe -m simulator --scenario normal --seed 1
+```
+
+Open [API docs](http://127.0.0.1:8000/docs). Once telemetry arrives:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/api/devices
+Invoke-RestMethod http://127.0.0.1:8000/api/devices/node01/telemetry/latest
+Invoke-RestMethod http://127.0.0.1:8000/api/devices/node01/telemetry/history
+$body = @{command_id='cmd-001'; method='set_sampling_interval'; params=@{interval_ms=2000}} | ConvertTo-Json -Depth 4
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/devices/node01/commands -ContentType application/json -Body $body
+Invoke-RestMethod http://127.0.0.1:8000/api/commands/cmd-001
+```
+
+POST initially returns `pending`, not success. Poll until a matching application
+ACK produces `success`, failure or timeout. Run only one Collector source
+(simulator OR physical board) on `energy/node01/*` at a time.
+
+## Test without hardware or broker
+
+```powershell
+./.venv/Scripts/python.exe -m pytest -q
 ./scripts/test.ps1
+./scripts/check-wire-vectors.ps1
+python -m platformio run -d firmware -e sensor_node -e collector_node
 ```
 
-From `firmware/`, equivalent commands are `pio run -e sensor_node` and
-`pio run -e collector_node`. `pio run` builds both default roles.
-The tests compile the real shared C++ code with mock radio, sensor and broker.
-They do not verify physical radio/I2C or a running broker.
-
-When hardware becomes available (nothing has been flashed):
+The C++ commands require the existing PlatformIO/MinGW setup; see
+[firmware guide](docs/firmware-quickstart.md). For opt-in real-broker tests:
 
 ```powershell
-python -m platformio device list
-python -m platformio run -d firmware -e sensor_node -t upload --upload-port COMx
-python -m platformio run -d firmware -e collector_node -t upload --upload-port COMy
-python -m platformio device monitor -d firmware --port COMx --baud 115200
+$env:RUN_MONGODB_TESTS='1'
+$env:RUN_MQTT_INTEGRATION='1'
+./.venv/Scripts/python.exe -m pytest -q -m integration
+Remove-Item Env:RUN_MQTT_INTEGRATION
+Remove-Item Env:RUN_MONGODB_TESTS
 ```
 
-Identify actual ports first. Initial upload may need BOOT + RESET.
-Collector logs its IP/channel/MAC; open its IP at `/`, `/api/status`,
-`/api/telemetry`, `/api/diagnostics`. No POST endpoint exists.
-Sensor logs sampling/status, packet counts, sensor errors and ACK queue count every 5s.
+Use a dedicated local Mosquitto broker with no physical node/simulator running.
+Missing broker tests are **SKIPPED/BLOCKED**, never reported as integration PASS.
 
-## MQTT contract
+See [setup/WSL2/troubleshooting](docs/gateway-setup.md),
+[MQTT and data contract](docs/mqtt-protocol.md), [simulation scenarios](docs/simulator.md),
+[architecture](docs/architecture.md), [test plan](docs/test-plan.md), and
+[Phase 2 results](docs/phase2-validation.md).
+Existing [firmware protocol](docs/espnow-protocol.md),
+[hardware checklist](docs/hardware-validation.md) and
+[legacy Modbus implementation](docs/legacy/README.md) are retained.
 
-| Topic | Direction | Payload |
-|---|---|---|
-| energy/node01/telemetry | Collector → broker | JSON integer voltage_mv/current_ma/power_mw/energy_mwh/sensor_status/sequence_number |
-| energy/node01/state | Collector → broker | retained online/connection snapshot and disconnect LWT |
-| energy/node01/command | broker → Collector | command schema below |
-| energy/node01/ack | Collector → broker | command_id, result, code |
-| energy/node01/event | Collector → broker | errors/rejections/connection events |
-
-Example: `{"command_id":1,"command_type":1,"command_parameter":1000}`.
-Type 1 sets interval (100–60000ms); type 2 requests status (parameter 0).
-Use a new uint32 ID for each command; only one may be pending. Accepted commands
-produce a correlated acknowledged/timeout result. Code 0=OK, 1=invalid parameter,
-2=unsupported, 3=ID conflict; timeout code=-1. Timeout does not prove non-execution.
-Malformed/busy/offline/duplicate commands produce an event and are not forwarded.
-SET_LOCAL_LED is reserved/unsupported and rejected at MQTT.
-
-This is a trusted-lab implementation: local plaintext MQTT/QoS0, MAC allowlisting
-but unencrypted ESP-NOW. CRC is not authentication. Configure broker ACLs, do not
-retain commands, and keep the interface on a trusted LAN. Encryption/TLS and
-provisioning are future hardening work. No credentials are committed.
-
-See [architecture](docs/architecture.md), [protocol](docs/espnow-protocol.md),
-[hardware](docs/hardware.md), [bring-up](docs/hardware-validation.md),
-[test plan](docs/test-plan.md), [acceptance matrix](docs/scoring-matrix.md),
-and [executed results](docs/migration-validation.md).
-**Every hardware test remains UNVERIFIED.**
-Previous work: [legacy Modbus README](docs/legacy/README.md).
+Persistence is now **MongoDB only**. Set MONGODB_URI and MONGODB_DATABASE in
+ignored gateway/.env. The application fails startup if MongoDB is unreachable;
+it never falls back to SQLite or memory. Default Python tests inject a mock
+explicitly and do not establish real MongoDB persistence. See
+[MongoDB migration/status](docs/mongodb-migration.md). This development machine's
+Windows 10 is outside current MongoDB Windows support; server installation and
+real persistence/integration validation require a supported host.

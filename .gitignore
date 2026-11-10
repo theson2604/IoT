@@ -1,4 +1,4 @@
-.pio/
+    .pio/
 __pycache__/
 .env
 *.exe
@@ -6,3 +6,12 @@ __pycache__/
 .vscode/
 
 firmware/include/local_config.h
+
+# Phase 2 local build/runtime files (existing ignore edits preserved)
+.pio/
+.venv/
+.pytest_cache/
+*.sqlite3*
+*.log*
+data/
+.venv-wsl/
